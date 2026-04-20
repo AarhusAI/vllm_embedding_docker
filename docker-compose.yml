@@ -1,0 +1,61 @@
+networks:
+  frontend:
+    external: true
+  app:
+    driver: bridge
+    internal: false
+
+services:
+  nginx:
+    image: nginxinc/nginx-unprivileged:alpine
+    networks:
+      - app
+      - frontend
+    depends_on:
+      - vllm-e5
+      - vllm-bge
+    ports:
+      - '8080'
+    volumes:
+      - ./.docker/templates:/etc/nginx/templates:ro
+      - ./index.html:/app/index.html
+    environment:
+      NGINX_WEB_ROOT: /app
+      NGINX_PORT: 8080
+      NGINX_ALLOW_METRICS_IP: "${NGINX_ALLOW_METRICS_IP}"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=frontend"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}.rule=Host(`${COMPOSE_DOMAIN}`)"
+
+  vllm-e5:
+    image: nvcr.io/nvidia/vllm:26.03-py3
+    command: "vllm serve ${VLLM_E5_MODEL:-intfloat/multilingual-e5-large} ${VLLM_E5_OPTIONS:-}"
+    shm_size: "${SHM_E5_SIZE:-8gb}"
+    networks:
+      - app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8000"
+    environment:
+      - "HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN:?}"
+      - "VLLM_API_KEY=${VLLM_API_KEY:?}"
+    volumes:
+      - ./.docker/data/vllm/:/root/.cache/huggingface:rw
+
+  vllm-bge:
+    image: nvcr.io/nvidia/vllm:26.03-py3
+    command: "vllm serve ${VLLM_BGE_MODEL:-BAAI/bge-m3} ${VLLM_BGE_OPTIONS:-}"
+    shm_size: "${SHM_BGE_SIZE:-8gb}"
+    networks:
+      - app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8000"
+    environment:
+      - "HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN:?}"
+      - "VLLM_API_KEY=${VLLM_API_KEY:?}"
+    volumes:
+      - ./.docker/data/vllm/:/root/.cache/huggingface:rw

@@ -12,9 +12,12 @@ services:
       - app
       - frontend
     depends_on:
-      - vllm-e5
-      - vllm-bge
-      - authz
+      vllm-e5:
+        condition: service_started
+      vllm-bge:
+        condition: service_started
+      authz:
+        condition: service_healthy
     ports:
       - '8080'
     volumes:
@@ -66,8 +69,17 @@ services:
     image: python:3.12-alpine
     networks:
       - app
+    user: "65534:65534"
     working_dir: /app
     command: python -u app.py
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
     volumes:
       - ./.docker/authz/app.py:/app/app.py:ro
       - ./.docker/authz/api_keys.txt:/keys/api_keys.txt:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz').read()"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+      start_period: 3s

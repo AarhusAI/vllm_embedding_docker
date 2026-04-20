@@ -33,14 +33,15 @@ def extract_token(header_value: str) -> str:
 class Handler(BaseHTTPRequestHandler):
     def _verify(self) -> None:
         token = extract_token(self.headers.get("X-Original-Authorization", ""))
+        client_ip = self.headers.get("X-Real-IP", "-")
         keys = load_keys()
         if token and token in keys:
             label = keys[token] or "-"
             self.send_response(204)
-            print(f"204 {label}", flush=True)
+            print(f"204 {client_ip} {label}", flush=True)
         else:
             self.send_response(401)
-            print("401 -", flush=True)
+            print(f"401 {client_ip} -", flush=True)
         self.end_headers()
 
     def do_GET(self) -> None:

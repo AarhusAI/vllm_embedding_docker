@@ -10,14 +10,16 @@ BIND_HOST = "0.0.0.0"
 BIND_PORT = 8000
 
 
-def load_keys() -> set[str]:
+def load_keys() -> dict[str, str]:
     if not KEYS_FILE.exists():
-        return set()
-    keys = set()
+        return {}
+    keys: dict[str, str] = {}
     for line in KEYS_FILE.read_text().splitlines():
-        key = line.split("#", 1)[0].strip()
-        if key:
-            keys.add(key)
+        token_part, sep, comment = line.partition("#")
+        token = token_part.strip()
+        if not token:
+            continue
+        keys[token] = comment.strip() if sep else ""
     return keys
 
 
@@ -31,10 +33,14 @@ def extract_token(header_value: str) -> str:
 class Handler(BaseHTTPRequestHandler):
     def _verify(self) -> None:
         token = extract_token(self.headers.get("X-Original-Authorization", ""))
-        if token and token in load_keys():
+        keys = load_keys()
+        if token and token in keys:
+            label = keys[token] or "-"
             self.send_response(204)
+            print(f"204 {label}", flush=True)
         else:
             self.send_response(401)
+            print("401 -", flush=True)
         self.end_headers()
 
     def do_GET(self) -> None:

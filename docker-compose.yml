@@ -14,6 +14,7 @@ services:
     depends_on:
       - vllm-e5
       - vllm-bge
+      - authz
     ports:
       - '8080'
     volumes:
@@ -23,6 +24,7 @@ services:
       NGINX_WEB_ROOT: /app
       NGINX_PORT: 8080
       NGINX_ALLOW_METRICS_IP: "${NGINX_ALLOW_METRICS_IP}"
+      VLLM_API_KEY: "${VLLM_API_KEY}"
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=frontend"
@@ -59,3 +61,13 @@ services:
       - "VLLM_API_KEY=${VLLM_API_KEY:?}"
     volumes:
       - ./.docker/data/vllm/:/root/.cache/huggingface:rw
+
+  authz:
+    image: python:3.12-alpine
+    networks:
+      - app
+    working_dir: /app
+    command: python -u app.py
+    volumes:
+      - ./.docker/authz/app.py:/app/app.py:ro
+      - ./.docker/authz/api_keys.txt:/keys/api_keys.txt:ro

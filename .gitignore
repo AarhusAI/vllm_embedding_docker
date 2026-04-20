@@ -1,3 +1,4 @@
 .env.docker.local
 .idea
 .env
+.docker/authz/api_keys.txt

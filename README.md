@@ -1,18 +1,22 @@
 # vLLM embedding service
 
 Docker Compose stack hosting two [vLLM](https://docs.vllm.ai/) embedding
-models behind a single nginx reverse proxy, integrated with Traefik for
-routing and TLS. Both models share one GPU. The nginx layer enforces
-multi-key bearer-token auth via a small sidecar; Traefik handles HTTPS.
+models and one reranker behind a single nginx reverse proxy, integrated
+with Traefik for routing and TLS. All three models share one GPU. The
+nginx layer enforces multi-key bearer-token auth via a small sidecar;
+Traefik handles HTTPS.
 
-| Route prefix | Model                              | Service     |
-|--------------|------------------------------------|-------------|
-| `/`          | `intfloat/multilingual-e5-large`   | `vllm-e5`   |
-| `/bge/`      | `BAAI/bge-m3` (`--convert embed`)  | `vllm-bge`  |
+| Route prefix | Model                                       | Service          |
+|--------------|---------------------------------------------|------------------|
+| `/`          | `intfloat/multilingual-e5-large`            | `vllm-e5`        |
+| `/bge/`      | `BAAI/bge-m3` (`--convert embed`)           | `vllm-bge`       |
+| `/rerank/`   | `BAAI/bge-reranker-v2-m3` (`--task score`)  | `vllm-reranker`  |
 
-Both expose the standard OpenAI-compatible endpoints (`/v1/embeddings`,
-`/v1/models`, etc.). `/metrics` (e5) and `/bge/metrics` (bge) are exposed
-behind an IP allowlist for Prometheus scraping.
+The two embedding services expose the standard OpenAI-compatible
+endpoints (`/v1/embeddings`, `/v1/models`, etc.). The reranker exposes
+`/v1/score` (vLLM-native) and `/v1/rerank` (Cohere-compatible).
+`/metrics` (e5), `/bge/metrics` (bge), and `/rerank/metrics` (reranker)
+are exposed behind an IP allowlist for Prometheus scraping.
 
 ## Requirements
 
@@ -66,6 +70,26 @@ curl -s "https://$COMPOSE_DOMAIN/bge/v1/embeddings" \
     "model": "BAAI/bge-m3",
     "input": ["Hej verden", "Hello, world"]
   }'
+
+# reranker — BAAI/bge-reranker-v2-m3 (Cohere-compatible /v1/rerank: returns sorted indices + scores)
+curl -s "https://$COMPOSE_DOMAIN/rerank/v1/rerank" \
+  -H "Authorization: Bearer $CLIENT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "BAAI/bge-reranker-v2-m3",
+    "query": "What is the capital of France?",
+    "documents": ["Paris is the capital of France.", "Berlin is the capital of Germany."]
+  }'
+
+# reranker — vLLM-native /v1/score (raw scores, unsorted; takes text_1/text_2)
+curl -s "https://$COMPOSE_DOMAIN/rerank/v1/score" \
+  -H "Authorization: Bearer $CLIENT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "BAAI/bge-reranker-v2-m3",
+    "text_1": "What is the capital of France?",
+    "text_2": ["Paris is the capital of France.", "Berlin is the capital of Germany."]
+  }'
 ```
 
 `$CLIENT_TOKEN` is the token part of a line in
@@ -87,13 +111,22 @@ All environment configuration lives in `.env` (start from `.env.example`):
 | `HUGGING_FACE_HUB_TOKEN`             | Required for HuggingFace model downloads                                |
 | `VLLM_E5_MODEL` / `VLLM_E5_OPTIONS` / `SHM_E5_SIZE` | Model ID, engine args, shared memory for `vllm-e5`           |
 | `VLLM_BGE_MODEL` / `VLLM_BGE_OPTIONS` / `SHM_BGE_SIZE` | Model ID, engine args, shared memory for `vllm-bge`       |
+| `VLLM_RERANKER_MODEL` / `VLLM_RERANKER_OPTIONS` / `SHM_RERANKER_SIZE` | Model ID, engine args, shared memory for `vllm-reranker` |
 | `VLLM_API_KEY`                       | Upstream key between nginx and vLLM. nginx rewrites the client `Authorization` to this value before proxying, so clients never see it. |
-| `NGINX_ALLOW_METRICS_IP`             | IP allowed to hit `/metrics` and `/bge/metrics`                         |
+| `NGINX_ALLOW_METRICS_IP`             | IP allowed to hit `/metrics`, `/bge/metrics`, and `/rerank/metrics`     |
 
-Both models run on the same GPU, so `--gpu-memory-utilization` must be
-set per model in `VLLM_*_OPTIONS` to avoid OOM (the example file uses
-`0.45` each). See the
+All three models run on the same GPU, so `--gpu-memory-utilization` must
+be set per model in `VLLM_*_OPTIONS` to avoid OOM (the example file uses
+`0.30` each, totaling `0.90` and leaving 10% headroom). See the
 [vLLM engine args reference](https://docs.vllm.ai/en/latest/models/engine_args.html).
+
+> **Upgrading from a two-service deployment:** the example previously
+> used `--gpu-memory-utilization 0.45` for e5 and bge. After pulling
+> this change you must lower both to `0.30` in your existing `.env`,
+> otherwise the third service will OOM at boot (0.45 + 0.45 + 0.30 >
+> 1.0). The reranker is a cross-encoder served via `--task score`;
+> clients should hit `/rerank/v1/rerank` (Cohere format) or
+> `/rerank/v1/score` (vLLM-native).
 
 > **Note:** `.env.example` does not include `COMPOSE_SERVER_DOMAIN`; add
 > it to your `.env` if you intend to use `docker-compose.server.yml`.
@@ -131,7 +164,7 @@ Tokens themselves are never logged, on either success or failure.
 
 | File                        | Role            | Adds                                                             |
 |-----------------------------|-----------------|------------------------------------------------------------------|
-| `docker-compose.yml`        | Base            | nginx, two vllm services, authz sidecar, networks, Traefik labels on `COMPOSE_DOMAIN` |
+| `docker-compose.yml`        | Base            | nginx, three vllm services, authz sidecar, networks, Traefik labels on `COMPOSE_DOMAIN` |
 | `docker-compose.dev.yml`    | Dev overlay     | Traefik `ITKBasicAuth@file` middleware in front of nginx        |
 | `docker-compose.server.yml` | Server overlay  | `restart: unless-stopped`, NVIDIA GPU reservations, HTTPS+redirect Traefik labels on `COMPOSE_SERVER_DOMAIN` |
 
@@ -142,7 +175,7 @@ Tokens themselves are never logged, on either success or failure.
 docker compose logs -f authz
 
 # Tail vLLM output (model loading, warnings)
-docker compose logs -f vllm-e5 vllm-bge
+docker compose logs -f vllm-e5 vllm-bge vllm-reranker
 
 # GPU usage on a server
 nvidia-smi dmon -s u

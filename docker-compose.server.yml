@@ -33,5 +33,16 @@ services:
               count: all
               capabilities: [gpu]
 
+  vllm-reranker:
+    restart: unless-stopped
+    deploy:
+      replicas: 1
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
   authz:
     restart: unless-stopped

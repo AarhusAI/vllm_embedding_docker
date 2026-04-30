@@ -10,7 +10,7 @@ Traefik handles HTTPS.
 |--------------|---------------------------------------------|------------------|
 | `/`          | `intfloat/multilingual-e5-large`            | `vllm-e5`        |
 | `/bge/`      | `BAAI/bge-m3` (`--convert embed`)           | `vllm-bge`       |
-| `/rerank/`   | `BAAI/bge-reranker-v2-m3` (`--task score`)  | `vllm-reranker`  |
+| `/rerank/`   | `BAAI/bge-reranker-v2-m3` (`--convert classify`) | `vllm-reranker` |
 
 The two embedding services expose the standard OpenAI-compatible
 endpoints (`/v1/embeddings`, `/v1/models`, etc.). The reranker exposes
@@ -124,7 +124,7 @@ be set per model in `VLLM_*_OPTIONS` to avoid OOM (the example file uses
 > used `--gpu-memory-utilization 0.45` for e5 and bge. After pulling
 > this change you must lower both to `0.30` in your existing `.env`,
 > otherwise the third service will OOM at boot (0.45 + 0.45 + 0.30 >
-> 1.0). The reranker is a cross-encoder served via `--task score`;
+> 1.0). The reranker is a cross-encoder served via `--convert classify`;
 > clients should hit `/rerank/v1/rerank` (Cohere format) or
 > `/rerank/v1/score` (vLLM-native).
 

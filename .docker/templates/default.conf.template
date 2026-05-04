@@ -48,6 +48,7 @@ server {
         proxy_set_header Content-Length "";
         proxy_set_header Host $host;
         proxy_set_header X-Original-Authorization $http_authorization;
+        proxy_set_header X-Original-URI $request_uri;
         proxy_set_header X-Real-IP $remote_addr;
     }
 

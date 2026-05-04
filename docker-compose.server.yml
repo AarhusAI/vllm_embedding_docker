@@ -1,6 +1,7 @@
 services:
   nginx:
     restart: unless-stopped
+    ports: !reset []
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=frontend"
@@ -13,6 +14,7 @@ services:
 
   vllm-e5:
     restart: unless-stopped
+    ports: !reset []
     deploy:
       replicas: 1
       resources:
@@ -24,6 +26,7 @@ services:
 
   vllm-bge:
     restart: unless-stopped
+    ports: !reset []
     deploy:
       replicas: 1
       resources:
@@ -35,6 +38,7 @@ services:
 
   vllm-reranker:
     restart: unless-stopped
+    ports: !reset []
     deploy:
       replicas: 1
       resources:
@@ -46,3 +50,4 @@ services:
 
   authz:
     restart: unless-stopped
+    ports: !reset []
